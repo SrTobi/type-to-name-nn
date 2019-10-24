@@ -2,7 +2,7 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 import tensorflow as tf
-
+from tensorflow.keras.preprocessing.sequence import pad_sequences
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from sklearn.model_selection import train_test_split
@@ -16,91 +16,46 @@ import time
 import sys
 
 
-# Download the file
-path_to_zip = tf.keras.utils.get_file(
-    'spa-eng.zip', origin='http://storage.googleapis.com/download.tensorflow.org/data/spa-eng.zip',
-    extract=True)
-
-path_to_file = os.path.dirname(path_to_zip)+"/spa-eng/spa.txt"
-
-# Converts the unicode file to ascii
-def unicode_to_ascii(s):
-    return ''.join(c for c in unicodedata.normalize('NFD', s)
-        if unicodedata.category(c) != 'Mn')
+END = '¥'
+START='€'
+learn_file = io.open("learn_simple.txt", encoding='UTF-8').read()
 
 
-def preprocess_sentence(w):
-    w = unicode_to_ascii(w.lower().strip())
+def create_dataset():
+    lines = learn_file.strip().split('\n')
 
-    # creating a space between a word and the punctuation following it
-    # eg: "he is a boy." => "he is a boy ."
-    # Reference:- https://stackoverflow.com/questions/3645931/python-padding-punctuation-with-white-spaces-keeping-punctuation
-    w = re.sub(r"([?.!,¿])", r" \1 ", w)
-    w = re.sub(r'[" "]+', " ", w)
+    input_target = []
+    for line in lines:
+      [expr, ty, id] = line.split('\t')
+      input_target.append([START + expr + '\t' + ty + '\t' + id + END, START + id + END])
 
-    # replacing everything with space except (a-z, A-Z, ".", "?", "!", ",")
-    w = re.sub(r"[^a-zA-Z?.!,¿]+", " ", w)
-
-    w = w.rstrip().strip()
-
-    # adding a start and an end token to the sentence
-    # so that the model know when to start and stop predicting.
-    w = '<start> ' + w + ' <end>'
-    return w
-
-en_sentence = u"May I borrow this book?"
-sp_sentence = u"¿Puedo tomar prestado este libro?"
-print(preprocess_sentence(en_sentence))
-print(preprocess_sentence(sp_sentence).encode('utf-8'))
-
-# 1. Remove the accents
-# 2. Clean the sentences
-# 3. Return word pairs in the format: [ENGLISH, SPANISH]
-def create_dataset(path, num_examples):
-    lines = io.open(path, encoding='UTF-8').read().strip().split('\n')
-
-    word_pairs = [[preprocess_sentence(w) for w in l.split('\t')]  for l in lines[:num_examples]]
-
-    return zip(*word_pairs)
-
-en, sp = create_dataset(path_to_file, None)
-print(en[-1])
-print(sp[-1])
+    return zip(*input_target)
 
 
 def max_length(tensor):
     return max(len(t) for t in tensor)
 
+chars = list(set(learn_file)) + [END, START]
+data_size, vocab_size = len(learn_file), len(chars) + 3
+print("data has %d characters, %d unique." % (data_size, vocab_size))
+char_to_ix = { ch:(i+1) for i,ch in enumerate(chars) }
+ix_to_char = { (i+1):ch for i,ch in enumerate(chars) }
+ix_to_char[0] = '#'
 
-def tokenize(lang):
-  lang_tokenizer = tf.keras.preprocessing.text.Tokenizer(
-      filters='')
-  lang_tokenizer.fit_on_texts(lang)
-
-  tensor = lang_tokenizer.texts_to_sequences(lang)
-
-  tensor = tf.keras.preprocessing.sequence.pad_sequences(tensor,
-                                                         padding='post')
-
-  return tensor, lang_tokenizer
+def tensorfy(list):
+  return pad_sequences([[char_to_ix[c] for c in str] for str in list], padding="post")
 
 
-
-
-def load_dataset(path, num_examples=None):
+def load_dataset():
     # creating cleaned input, output pairs
-    targ_lang, inp_lang = create_dataset(path, num_examples)
+    raw_input, raw_target = create_dataset()
 
-    input_tensor, inp_lang_tokenizer = tokenize(inp_lang)
-    target_tensor, targ_lang_tokenizer = tokenize(targ_lang)
-
-    return input_tensor, target_tensor, inp_lang_tokenizer, targ_lang_tokenizer
+    return tensorfy(raw_input), tensorfy(raw_target)
 
 
 
 # Try experimenting with the size of that dataset
-num_examples = 30000
-input_tensor, target_tensor, inp_lang, targ_lang = load_dataset(path_to_file, num_examples)
+input_tensor, target_tensor = load_dataset()
 
 # Calculate max_length of the target tensors
 max_length_targ, max_length_inp = max_length(target_tensor), max_length(input_tensor)
@@ -115,17 +70,17 @@ input_tensor_train, input_tensor_val, target_tensor_train, target_tensor_val = t
 print(len(input_tensor_train), len(target_tensor_train), len(input_tensor_val), len(target_tensor_val))
 
 
-def convert(lang, tensor):
+def convert(tensor):
   for t in tensor:
-    if t!=0:
-      print ("%d ----> %s" % (t, lang.index_word[t]))
+    if t != 0:
+      print ("%d ----> %s" % (t, ix_to_char[t]))
 
 
-print ("Input Language; index to word mapping")
-convert(inp_lang, input_tensor_train[0])
+print ("Input; index to char mapping")
+convert(input_tensor_train[0])
 print ()
-print ("Target Language; index to word mapping")
-convert(targ_lang, target_tensor_train[0])
+print ("Target Language; index to char mapping")
+convert(target_tensor_train[0])
 
 
 
@@ -137,13 +92,10 @@ convert(targ_lang, target_tensor_train[0])
 
 BUFFER_SIZE = len(input_tensor_train)
 BATCH_SIZE = 64
-steps_per_epoch = len(input_tensor_train)//BATCH_SIZE
-embedding_dim = 256
+steps_per_epoch = max(1, len(input_tensor_train)//BATCH_SIZE)
 units = 1024
-vocab_inp_size = len(inp_lang.word_index)+1
-vocab_tar_size = len(targ_lang.word_index)+1
 
-dataset = tf.data.Dataset.from_tensor_slices((input_tensor_train, target_tensor_train)).shuffle(BUFFER_SIZE)
+dataset = tf.data.Dataset.from_tensor_slices((input_tensor_train, target_tensor_train)).repeat().shuffle(BUFFER_SIZE)
 dataset = dataset.batch(BATCH_SIZE, drop_remainder=True)
 
 
@@ -158,18 +110,17 @@ example_input_batch.shape, example_target_batch.shape
 
 
 class Encoder(tf.keras.Model):
-  def __init__(self, vocab_size, embedding_dim, enc_units, batch_sz):
+  def __init__(self, vocab_size, enc_units, batch_sz):
     super(Encoder, self).__init__()
     self.batch_sz = batch_sz
     self.enc_units = enc_units
-    self.embedding = tf.keras.layers.Embedding(vocab_size, embedding_dim)
     self.gru = tf.keras.layers.GRU(self.enc_units,
                                    return_sequences=True,
                                    return_state=True,
                                    recurrent_initializer='glorot_uniform')
 
   def call(self, x, hidden):
-    x = self.embedding(x)
+    x = tf.one_hot(x, depth=vocab_size)
     output, state = self.gru(x, initial_state = hidden)
     return output, state
 
@@ -180,7 +131,7 @@ class Encoder(tf.keras.Model):
 ####################################################################################################üü
 
 
-encoder = Encoder(vocab_inp_size, embedding_dim, units, BATCH_SIZE)
+encoder = Encoder(vocab_size, units, BATCH_SIZE)
 
 # sample input
 sample_hidden = encoder.initialize_hidden_state()
@@ -238,11 +189,10 @@ print("Attention weights shape: (batch_size, sequence_length, 1) {}".format(atte
 
 
 class Decoder(tf.keras.Model):
-  def __init__(self, vocab_size, embedding_dim, dec_units, batch_sz):
+  def __init__(self, vocab_size, dec_units, batch_sz):
     super(Decoder, self).__init__()
     self.batch_sz = batch_sz
     self.dec_units = dec_units
-    self.embedding = tf.keras.layers.Embedding(vocab_size, embedding_dim)
     self.gru = tf.keras.layers.GRU(self.dec_units,
                                    return_sequences=True,
                                    return_state=True,
@@ -257,7 +207,7 @@ class Decoder(tf.keras.Model):
     context_vector, attention_weights = self.attention(hidden, enc_output)
 
     # x shape after passing through embedding == (batch_size, 1, embedding_dim)
-    x = self.embedding(x)
+    x = tf.one_hot(x, depth=vocab_size)
 
     # x shape after concatenation == (batch_size, 1, embedding_dim + hidden_size)
     x = tf.concat([tf.expand_dims(context_vector, 1), x], axis=-1)
@@ -279,9 +229,9 @@ class Decoder(tf.keras.Model):
 
 ####################################################################################################üü
 
-decoder = Decoder(vocab_tar_size, embedding_dim, units, BATCH_SIZE)
+decoder = Decoder(vocab_size, units, BATCH_SIZE)
 
-sample_decoder_output, _, _ = decoder(tf.random.uniform((64, 1)),
+sample_decoder_output, _, _ = decoder(tf.random.uniform((BATCH_SIZE, 1), dtype=tf.dtypes.int32, minval=1, maxval=vocab_size),
                                       sample_hidden, sample_output)
 
 print ('Decoder output shape: (batch_size, vocab size) {}'.format(sample_decoder_output.shape))
@@ -316,7 +266,7 @@ checkpoint = tf.train.Checkpoint(optimizer=optimizer,
 
 latestchek = tf.train.latest_checkpoint(checkpoint_dir)
 if latestchek is not None:
-    print("Load latest checkpoint")
+    print("Load latest checkpoint (%s)" % latestchek)
     checkpoint.restore(latestchek)
 
 
@@ -331,7 +281,7 @@ def train_step(inp, targ, enc_hidden):
 
     dec_hidden = enc_hidden
 
-    dec_input = tf.expand_dims([targ_lang.word_index['<start>']] * BATCH_SIZE, 1)
+    dec_input = tf.expand_dims([char_to_ix[START]] * BATCH_SIZE, 1)
 
     # Teacher forcing - feeding the target as the next input
     for t in range(1, targ.shape[1]):
@@ -360,7 +310,8 @@ def train_step(inp, targ, enc_hidden):
 ####################################################################################################üü
 
 def train():
-  EPOCHS = 10
+  EPOCHS = 1000
+  SAVE_EVERY_X_EPOCH = 3
 
   for epoch in range(EPOCHS):
     start = time.time()
@@ -372,16 +323,21 @@ def train():
       batch_loss = train_step(inp, targ, enc_hidden)
       total_loss += batch_loss
 
-      if batch % 100 == 0:
+      if batch % 10 == 0:
           print('Epoch {} Batch {} Loss {:.4f}'.format(epoch + 1,
                                                       batch,
                                                       batch_loss.numpy()))
-    # saving (checkpoint) the model every 2 epochs
-    checkpoint.save(file_prefix = checkpoint_prefix)
+    # saving (checkpoint) the model every 3 epochs
+    if (epoch + 1) % SAVE_EVERY_X_EPOCH == 0:
+      checkpoint.save(file_prefix = checkpoint_prefix)
+      print("model saved!")
 
     print('Epoch {} Loss {:.4f}'.format(epoch + 1,
                                         total_loss / steps_per_epoch))
     print('Time taken for 1 epoch {} sec\n'.format(time.time() - start))
+
+    result, input, _ = evaluate('true	Boolean	b')
+    print('%s -> %s' % (input, result))
 
 
 
@@ -391,12 +347,11 @@ def train():
 
 
 
-def evaluate(sentence):
+def evaluate(input):
     attention_plot = np.zeros((max_length_targ, max_length_inp))
 
-    sentence = preprocess_sentence(sentence)
-
-    inputs = [inp_lang.word_index[i] for i in sentence.split(' ')]
+    input = START + input + END
+    inputs = [char_to_ix[i] for i in input]
     inputs = tf.keras.preprocessing.sequence.pad_sequences([inputs],
                                                            maxlen=max_length_inp,
                                                            padding='post')
@@ -408,7 +363,7 @@ def evaluate(sentence):
     enc_out, enc_hidden = encoder(inputs, hidden)
 
     dec_hidden = enc_hidden
-    dec_input = tf.expand_dims([targ_lang.word_index['<start>']], 0)
+    dec_input = tf.expand_dims([char_to_ix[START]], 0)
 
     for t in range(max_length_targ):
         predictions, dec_hidden, attention_weights = decoder(dec_input,
@@ -421,15 +376,15 @@ def evaluate(sentence):
 
         predicted_id = tf.argmax(predictions[0]).numpy()
 
-        result += targ_lang.index_word[predicted_id] + ' '
+        result += ix_to_char[predicted_id]
 
-        if targ_lang.index_word[predicted_id] == '<end>':
-            return result, sentence, attention_plot
+        if predicted_id == char_to_ix[END]:
+            break
 
         # the predicted ID is fed back into the model
         dec_input = tf.expand_dims([predicted_id], 0)
 
-    return result, sentence, attention_plot
+    return result, input, attention_plot
 
 
 ####################################################################################################
@@ -443,8 +398,8 @@ def plot_attention(attention, sentence, predicted_sentence):
 
     fontdict = {'fontsize': 14}
 
-    ax.set_xticklabels([''] + sentence, fontdict=fontdict, rotation=90)
-    ax.set_yticklabels([''] + predicted_sentence, fontdict=fontdict)
+    ax.set_xticklabels([''] + list(sentence), fontdict=fontdict, rotation=90)
+    ax.set_yticklabels([''] + list(predicted_sentence), fontdict=fontdict)
 
     ax.xaxis.set_major_locator(ticker.MultipleLocator(1))
     ax.yaxis.set_major_locator(ticker.MultipleLocator(1))
@@ -461,8 +416,8 @@ def translate(sentence):
     print('Input: %s' % (sentence))
     print('Predicted translation: {}'.format(result))
 
-    attention_plot = attention_plot[:len(result.split(' ')), :len(sentence.split(' '))]
-    plot_attention(attention_plot, sentence.split(' '), result.split(' '))
+    attention_plot = attention_plot[:len(result), :len(sentence)]
+    plot_attention(attention_plot, sentence, result)
 
 ####################################################################################################
 
