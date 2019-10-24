@@ -14,6 +14,7 @@ import os
 import io
 import time
 import sys
+import random
 
 
 END = '¥'
@@ -25,10 +26,13 @@ def create_dataset():
     lines = learn_file.strip().split('\n')
 
     input_target = []
-    for line in lines:
+    for (i, line) in enumerate(lines):
+      #if i > 1000:
+      #  break
+
       [expr, ty, id] = line.split('\t')
       if len(line) < 60:
-        input_target.append([START + expr + '\t' + ty + '\t' + id + END, START + id + END])
+        input_target.append([START + expr + '\t' + ty + END, START + id + END])
 
     return zip(*input_target)
 
@@ -47,9 +51,9 @@ def tensorfy(list):
   return pad_sequences([[char_to_ix[c] for c in str] for str in list], padding="post")
 
 
+raw_input, raw_target = create_dataset()
 def load_dataset():
     # creating cleaned input, output pairs
-    raw_input, raw_target = create_dataset()
 
     return tensorfy(raw_input), tensorfy(raw_target)
 
@@ -65,7 +69,7 @@ print("Max target = %d" % max_length_targ)
 
 
 # Creating training and validation sets using an 80-20 split
-input_tensor_train, input_tensor_val, target_tensor_train, target_tensor_val = train_test_split(input_tensor, target_tensor, test_size=0.2)
+input_tensor_train, input_tensor_val, target_tensor_train, target_tensor_val = train_test_split(input_tensor, target_tensor, test_size=0.1)
 
 # Show length
 print(len(input_tensor_train), len(target_tensor_train), len(input_tensor_val), len(target_tensor_val))
@@ -98,6 +102,9 @@ units = 100
 
 dataset = tf.data.Dataset.from_tensor_slices((input_tensor_train, target_tensor_train)).shuffle(BUFFER_SIZE)
 dataset = dataset.batch(BATCH_SIZE, drop_remainder=True)
+
+val_dataset = tf.data.Dataset.from_tensor_slices((input_tensor_val, target_tensor_val)).shuffle(len(input_tensor_val))
+val_dataset = val_dataset.batch(BATCH_SIZE, drop_remainder=True)
 
 
 
@@ -135,10 +142,10 @@ class Encoder(tf.keras.Model):
 encoder = Encoder(vocab_size, units, BATCH_SIZE)
 
 # sample input
-sample_hidden = encoder.initialize_hidden_state()
-sample_output, sample_hidden = encoder(example_input_batch, sample_hidden)
-print ('Encoder output shape: (batch size, sequence length, units) {}'.format(sample_output.shape))
-print ('Encoder Hidden state shape: (batch size, units) {}'.format(sample_hidden.shape))
+#sample_hidden = encoder.initialize_hidden_state()
+#sample_output, sample_hidden = encoder(example_input_batch, sample_hidden)
+#print ('Encoder output shape: (batch size, sequence length, units) {}'.format(sample_output.shape))
+#print ('Encoder Hidden state shape: (batch size, units) {}'.format(sample_hidden.shape))
 
 
 
@@ -178,10 +185,10 @@ class BahdanauAttention(tf.keras.layers.Layer):
 
 
 attention_layer = BahdanauAttention(10)
-attention_result, attention_weights = attention_layer(sample_hidden, sample_output)
-
-print("Attention result shape: (batch size, units) {}".format(attention_result.shape))
-print("Attention weights shape: (batch_size, sequence_length, 1) {}".format(attention_weights.shape))
+#attention_result, attention_weights = attention_layer(sample_hidden, sample_output)
+#
+#print("Attention result shape: (batch size, units) {}".format(attention_result.shape))
+#print("Attention weights shape: (batch_size, sequence_length, 1) {}".format(attention_weights.shape))
 
 
 
@@ -232,10 +239,10 @@ class Decoder(tf.keras.Model):
 
 decoder = Decoder(vocab_size, units, BATCH_SIZE)
 
-sample_decoder_output, _, _ = decoder(tf.random.uniform((BATCH_SIZE, 1), dtype=tf.dtypes.int32, minval=1, maxval=vocab_size),
-                                      sample_hidden, sample_output)
+#sample_decoder_output, _, _ = decoder(tf.random.uniform((BATCH_SIZE, 1), dtype=tf.dtypes.int32, minval=1, maxval=vocab_size),
+#                                      sample_hidden, sample_output)
 
-print ('Decoder output shape: (batch_size, vocab size) {}'.format(sample_decoder_output.shape))
+#print ('Decoder output shape: (batch_size, vocab size) {}'.format(sample_decoder_output.shape))
 
 
 
@@ -269,12 +276,13 @@ latestchek = tf.train.latest_checkpoint(checkpoint_dir)
 if latestchek is not None:
   print("Load latest checkpoint (%s)" % latestchek)
   status = checkpoint.restore(latestchek)
+  
 
 
 ####################################################################################################üü
 
 @tf.function
-def train_step(inp, targ, enc_hidden):
+def train_step(inp, targ, enc_hidden, validate):
   loss = 0
 
   with tf.GradientTape() as tape:
@@ -300,10 +308,10 @@ def train_step(inp, targ, enc_hidden):
 
   gradients = tape.gradient(loss, variables)
 
-  optimizer.apply_gradients(zip(gradients, variables))
+  if not validate:
+    optimizer.apply_gradients(zip(gradients, variables))
 
   return batch_loss
-
 
 
 
@@ -312,16 +320,17 @@ def train_step(inp, targ, enc_hidden):
 
 def train():
   EPOCHS = 1000
-  SAVE_EVERY_X_EPOCH = 1
+  SAVE_EVERY_X_EPOCH = 10
+  DO_VALIDATION = False
 
   for epoch in range(EPOCHS):
     start = time.time()
 
     total_loss = 0
+    enc_hidden = encoder.initialize_hidden_state()
 
     for (batch, (inp, targ)) in enumerate(dataset.take(steps_per_epoch)):
-      enc_hidden = encoder.initialize_hidden_state()
-      batch_loss = train_step(inp, targ, enc_hidden)
+      batch_loss = train_step(inp, targ, enc_hidden, False)
       total_loss += batch_loss
 
       if batch % 10 == 0:
@@ -332,6 +341,15 @@ def train():
     if (epoch + 1) % SAVE_EVERY_X_EPOCH == 0:
       checkpoint.save(file_prefix = checkpoint_prefix)
       print("model saved!!!!!!!!!!!!!!!!!!!!!!!")
+
+    if DO_VALIDATION:
+      (val_input, val_target) = next(iter(val_dataset))
+      val_loss = train_step(val_input, val_target, encoder.initialize_hidden_state(), True)
+
+      print('Validation loss: {}'.format(val_loss))
+
+    if epoch > 100:
+      translate(random.choice(raw_input)[1:-1])
 
     print('Epoch {} Loss {:.4f}'.format(epoch + 1,
                                         total_loss / steps_per_epoch))
