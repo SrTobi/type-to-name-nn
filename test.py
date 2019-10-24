@@ -96,7 +96,7 @@ BATCH_SIZE = 64
 steps_per_epoch = max(1, len(input_tensor_train)//BATCH_SIZE)
 units = 100
 
-dataset = tf.data.Dataset.from_tensor_slices((input_tensor_train, target_tensor_train)).repeat().shuffle(BUFFER_SIZE)
+dataset = tf.data.Dataset.from_tensor_slices((input_tensor_train, target_tensor_train)).shuffle(BUFFER_SIZE)
 dataset = dataset.batch(BATCH_SIZE, drop_remainder=True)
 
 
@@ -267,8 +267,8 @@ checkpoint = tf.train.Checkpoint(optimizer=optimizer,
 
 latestchek = tf.train.latest_checkpoint(checkpoint_dir)
 if latestchek is not None:
-    print("Load latest checkpoint (%s)" % latestchek)
-    checkpoint.restore(latestchek)
+  print("Load latest checkpoint (%s)" % latestchek)
+  status = checkpoint.restore(latestchek)
 
 
 ####################################################################################################üü
@@ -312,7 +312,7 @@ def train_step(inp, targ, enc_hidden):
 
 def train():
   EPOCHS = 1000
-  SAVE_EVERY_X_EPOCH = 40
+  SAVE_EVERY_X_EPOCH = 1
 
   for epoch in range(EPOCHS):
     start = time.time()
