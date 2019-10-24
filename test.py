@@ -18,7 +18,7 @@ import sys
 
 END = '¥'
 START='€'
-learn_file = io.open("learn_simple.txt", encoding='UTF-8').read()
+learn_file = io.open("all_vals", encoding='UTF-8').read()
 
 
 def create_dataset():
@@ -27,7 +27,8 @@ def create_dataset():
     input_target = []
     for line in lines:
       [expr, ty, id] = line.split('\t')
-      input_target.append([START + expr + '\t' + ty + '\t' + id + END, START + id + END])
+      if len(line) < 60:
+        input_target.append([START + expr + '\t' + ty + '\t' + id + END, START + id + END])
 
     return zip(*input_target)
 
@@ -93,7 +94,7 @@ convert(target_tensor_train[0])
 BUFFER_SIZE = len(input_tensor_train)
 BATCH_SIZE = 64
 steps_per_epoch = max(1, len(input_tensor_train)//BATCH_SIZE)
-units = 1024
+units = 100
 
 dataset = tf.data.Dataset.from_tensor_slices((input_tensor_train, target_tensor_train)).repeat().shuffle(BUFFER_SIZE)
 dataset = dataset.batch(BATCH_SIZE, drop_remainder=True)
@@ -311,15 +312,15 @@ def train_step(inp, targ, enc_hidden):
 
 def train():
   EPOCHS = 1000
-  SAVE_EVERY_X_EPOCH = 3
+  SAVE_EVERY_X_EPOCH = 40
 
   for epoch in range(EPOCHS):
     start = time.time()
 
-    enc_hidden = encoder.initialize_hidden_state()
     total_loss = 0
 
     for (batch, (inp, targ)) in enumerate(dataset.take(steps_per_epoch)):
+      enc_hidden = encoder.initialize_hidden_state()
       batch_loss = train_step(inp, targ, enc_hidden)
       total_loss += batch_loss
 
@@ -330,13 +331,17 @@ def train():
     # saving (checkpoint) the model every 3 epochs
     if (epoch + 1) % SAVE_EVERY_X_EPOCH == 0:
       checkpoint.save(file_prefix = checkpoint_prefix)
-      print("model saved!")
+      print("model saved!!!!!!!!!!!!!!!!!!!!!!!")
 
     print('Epoch {} Loss {:.4f}'.format(epoch + 1,
                                         total_loss / steps_per_epoch))
     print('Time taken for 1 epoch {} sec\n'.format(time.time() - start))
 
+    result, input, _ = evaluate('3	Int	i')
+    print('%s -> %s' % (input, result))
     result, input, _ = evaluate('true	Boolean	b')
+    print('%s -> %s' % (input, result))
+    result, input, _ = evaluate('"test"	String	str')
     print('%s -> %s' % (input, result))
 
 
