@@ -27,7 +27,7 @@ class TrainingsData:
         self.batches_per_epoch = max(1, len(it) // batch_size)
 
     @staticmethod
-    def from_array(arr, alphabet = None):
+    def from_array(arr, alphabet = None, batch_size = 64, validation_ratio = 0.1):
         if alphabet is None:
             chars = { c for dataAndLabel in arr for dataOrLabel in dataAndLabel for c in dataOrLabel }
             alphabet = Alphabet.from_chars(chars)
@@ -38,4 +38,4 @@ class TrainingsData:
             transformed = [alphabet.string_to_indices(str) for str in data]
             return pad_sequences(transformed, padding="post")
         
-        return TrainingsData(tensorfy(input), tensorfy(label), alphabet)
+        return TrainingsData(tensorfy(input), tensorfy(label), alphabet, batch_size, validation_ratio)

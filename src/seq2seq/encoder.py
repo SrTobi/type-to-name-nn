@@ -12,7 +12,5 @@ class Encoder(tf.keras.Model):
 
     def call(self, x, hidden):
         x = tf.one_hot(x, depth = self.vocab_size)
-        print(len(x))
-        print(len(hidden))
         output, state = self.gru(x, initial_state = hidden)
         return output, state

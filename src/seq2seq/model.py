@@ -92,32 +92,34 @@ class Model:
             start = time.time()
 
             total_loss = 0
+            print(f"=== Epoch {epoch} ===")
 
             for (batch, (inp, targ)) in enumerate(dataset.training_data.take(batches_per_epoch)):
                 batch_loss = train_step(inp, targ, False)
                 total_loss += batch_loss
 
                 if batch % 10 == 0:
-                    print('Epoch {} Batch {} Loss {:.4f}'.format(epoch,
-                                                                 batch,
-                                                                 batch_loss.numpy()))
-            # saving (checkpoint) the model every 3 epochs
-            if epoch % save_every_x_epoch == 0:
-                self.save()
-                print("model saved!!!!!!!!!!!!!!!!!!!!!!!")
+                    print('Batch {} loss {:.5f}'.format(batch, batch_loss.numpy()))
 
             if do_validation:
                 (val_input, val_target) = next(iter(dataset.validation_data))
                 val_loss = train_step(val_input, val_target, True)
 
-                print('Validation loss: {}'.format(val_loss))
+                print('Validation loss: {:.5f}'.format(val_loss))
 
-            if epoch > 100:
-                translate(random.choice(raw_input)[1:-1])
+            #if epoch > 100:
+            #    translate(random.choice(raw_input)[1:-1])
 
-            print('Epoch {} Loss {:.4f}'.format(epoch + 1,
-                                                total_loss / batches_per_epoch))
-            print('Time taken for 1 epoch {} sec\n'.format(time.time() - start))
+            print('Epoch Loss {:.4f}'.format(total_loss / batches_per_epoch))
+            print('Time taken for epoch: {:.2f} sec'.format(time.time() - start))
+
+
+            # saving (checkpoint) the model every 3 epochs
+            if epoch % save_every_x_epoch == 0:
+                self.save()
+                print("Model saved!")
+            
+            print("\n")
 
             #result, input, _ = evaluate('3	Int	i')
             #print('%s -> %s' % (input, result))
