@@ -31,6 +31,14 @@ class IdentifierPredictor:
         self.log(f"Alphabet has {self.alphabet.size} chars")
 
         self.model = Model(self.alphabet, 500)
+
+    def load(self, partial=False):
+
+        res = self.model.try_load(partial)
+        if res is None:
+            self.log("Couldn't load checkpoint")
+        else:
+            self.log(f"Restored {res}")
     
     def log(self, msg):
         if self.do_logging:
@@ -41,5 +49,6 @@ class IdentifierPredictor:
               save_every_x_epoch = 10):
         self.model.train(self.trainings_data, save_every_x_epoch = save_every_x_epoch)
         
-    def evaluate(sample):
-        return
+    def evaluate(self, sample):
+        res, _ = self.model.evaluate(sample)
+        print(f"Result: {res}")

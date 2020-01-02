@@ -18,14 +18,18 @@ class Model:
         self.encoder = Encoder(alphabet.size, units)
         self.decoder = Decoder(alphabet.size, units)
         self.optimizer = tf.keras.optimizers.Adam()
+        self.evaluatable = False
         self.checkpoint = tf.train.Checkpoint(optimizer = self.optimizer,
                                               encoder   = self.encoder,
                                               decoder   = self.decoder)
 
-    def try_load(self):
-        latestchek = tf.train.latest_checkpoint(checkpoint_dir)
+    def try_load(self, partial):
+        latestchek = tf.train.latest_checkpoint(self.checkpoint_dir)
         if (latestchek is not None):
-            self.checkpoint.restore(latestchek)
+            result = self.checkpoint.restore(latestchek)
+            if partial:
+                result.expect_partial()
+            self.evaluatable = True
         return latestchek
     
     def save(self):
@@ -119,6 +123,8 @@ class Model:
                 self.save()
                 print("Model saved!")
             
+            self.evaluatable = True
+            
             print("\n")
 
             #result, input, _ = evaluate('3	Int	i')
@@ -128,5 +134,44 @@ class Model:
             #result, input, _ = evaluate('"test"	String	str')
             #print('%s -> %s' % (input, result))
 
-    def evaluate():
-        return
+    def evaluate(self, input, max_output = 100):
+        assert self.evaluatable
+        attention_plot = []
+        char_to_ix = self.alphabet.char_to_ix
+        ix_to_char = self.alphabet.ix_to_char
+
+        inputs = [char_to_ix(c) for c in input]
+        #inputs = tf.keras.preprocessing.sequence.pad_sequences([inputs],
+        #                                                    maxlen=max_output,
+        #                                                    padding='post')
+        inputs = tf.convert_to_tensor([inputs])
+
+        result = ''
+
+        hidden = [tf.zeros((1, self.units))]
+        enc_out, enc_hidden = self.encoder(inputs, hidden)
+
+        dec_hidden = enc_hidden
+        dec_input = tf.expand_dims([char_to_ix(Alphabet.START)], 0)
+
+        for _ in range(0, max_output):
+            predictions, dec_hidden, attention_weights = self.decoder(dec_input,
+                                                                      dec_hidden,
+                                                                      enc_out)
+
+            # storing the attention weights to plot later on
+            attention_weights = tf.reshape(attention_weights, (-1, ))
+            attention_plot.append(attention_weights.numpy())
+
+            predicted_idx = tf.argmax(predictions[0]).numpy()
+
+            if predicted_idx == char_to_ix(Alphabet.END):
+                break
+
+            result += ix_to_char(predicted_idx)
+
+
+            # the predicted ID is fed back into the model
+            dec_input = tf.expand_dims([predicted_idx], 0)
+
+        return result, attention_plot
