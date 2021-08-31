@@ -165,11 +165,10 @@ class Model:
 
             predicted_idx = tf.argmax(predictions[0]).numpy()
 
-            if predicted_idx == char_to_ix(Alphabet.END):
-                break
-
             result += ix_to_char(predicted_idx)
 
+            if predicted_idx == char_to_ix(Alphabet.END):
+                break
 
             # the predicted ID is fed back into the model
             dec_input = tf.expand_dims([predicted_idx], 0)

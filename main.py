@@ -14,6 +14,8 @@ parser.add_argument("--tflog", dest="tf_level", type=int, default=3,
                     help="Tensorflow log level (0, 1, 2, or 3)")
 parser.add_argument("-q", "--quiet", dest="log", action="store_false",
                     help="Don't print log")
+parser.add_argument("-p", "--plot", dest="draw_plot", action="store_true",
+                    help="Show attention plot")
 
 args = parser.parse_args()
 
@@ -28,12 +30,13 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = str(args.tf_level)
 
 from src import IdentifierPredictor
 
-predictor = IdentifierPredictor("all_vals", log = args.log)
+predictor = IdentifierPredictor("learn_simple.txt", log = args.log)
 
 predictor.load(partial = not args.train)
 
 if args.train:
     predictor.log("Run training...")
-    predictor.train(save_every_x_epoch = 1)
+    predictor.train(save_every_x_epoch = 10)
 elif args.expr is not None:
-    predictor.evaluate("test")
+    print(args.expr)
+    predictor.evaluate(args.expr, draw_plot=args.draw_plot)
